@@ -22,7 +22,7 @@ export default function handler(req, res) {
     ua.includes('codex') ||
     ua.includes('arceus') ||
     ua.includes('wave') ||
-    ua.includes('solara');
+    ua.includes('real');
 
   // TRƯỜNG HỢP 1: Nếu mở bằng Trình duyệt
   if (isBrowser || !isRobloxOrExecutor) {
