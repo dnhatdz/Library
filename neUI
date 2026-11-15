@@ -72,6 +72,20 @@ local function ApplyWindIcon(imageLabel, iconName)
     end
     imageLabel.Image = FallbackLucide[cleanName] or FallbackLucide["sparkles"]
 end
+local FontStyles = {
+    ["Normal"] = {
+        Regular = Font.fromEnum(Enum.Font.Gotham),
+        Medium = Font.fromEnum(Enum.Font.GothamMedium),
+        Bold = Font.fromEnum(Enum.Font.GothamBold),
+        Mono = Font.fromEnum(Enum.Font.Code)
+    },
+    ["Minecraft"] = {
+        Regular = Font.fromEnum(Enum.Font.Arcade),
+        Medium = Font.fromEnum(Enum.Font.Arcade),
+        Bold = Font.fromEnum(Enum.Font.Arcade),
+        Mono = Font.fromEnum(Enum.Font.Arcade)
+    }
+}
 local Themes = {
     ["Liquid Glass"] = {
         WindowBg = Color3.fromRGB(14, 16, 26),
@@ -254,8 +268,8 @@ local function MakeDraggable(handle, target, uiScaleObj)
             local halfH = (target.Size.Y.Offset * scale) * 0.5
             local rawX = (startPos.X.Scale * vp.X) + startPos.X.Offset + delta.X
             local rawY = (startPos.Y.Scale * vp.Y) + startPos.Y.Offset + delta.Y
-            local clampedX = math.clamp(rawX, math.min(halfW + 8, vp.X * 0.5), math.max(vp.X - halfW - 8, vp.X * 0.5))
-            local clampedY = math.clamp(rawY, math.min(halfH + 8, vp.Y * 0.5), math.max(vp.Y - halfH - 8, vp.Y * 0.5))
+            local clampedX = math.clamp(rawX, math.min(halfW + 6, vp.X * 0.5), math.max(vp.X - halfW - 6, vp.X * 0.5))
+            local clampedY = math.clamp(rawY, math.min(halfH + 6, vp.Y * 0.5), math.max(vp.Y - halfH - 6, vp.Y * 0.5))
             Tween(target, 0.08, Enum.EasingStyle.Sine, Enum.EasingDirection.Out, {
                 Position = UDim2.new(0, clampedX, 0, clampedY)
             })
@@ -265,14 +279,16 @@ end
 local GlassLib = {}
 GlassLib.__index = GlassLib
 GlassLib.Themes = {"Liquid Glass", "Dark", "White", "Rose", "Purple", "Cyan"}
+GlassLib.Fonts = {"Minecraft", "Normal"}
 function GlassLib:CreateWindow(cfg)
     cfg = cfg or {}
-    local TitleText = tostring(cfg.Title or "DN Hub • AetherUI")
-    local SubTitleText = tostring(cfg.SubTitle or "Liquid Glass Pro v4.0")
-    local WinSize = cfg.Size or UDim2.new(0, 770, 0, 520)
+    local TitleText = tostring(cfg.Title or "Dynex Hub")
+    local SubTitleText = tostring(cfg.SubTitle or "Liquid Glass Pro v4.2")
+    local WinSize = cfg.Size or UDim2.new(0, 680, 0, 440)
     local MinimizeKey = cfg.MinimizeKey or Enum.KeyCode.RightControl
-    local CurrentThemeName = cfg.Theme and Themes[cfg.Theme] and cfg.Theme or "Liquid Glass"
+    local CurrentThemeName = cfg.Theme and Themes[cfg.Theme] and cfg.Theme or "Rose"
     local CurrentToggleStyle = (cfg.ToggleStyle == "Checkbox") and "Checkbox" or "Switch"
+    local CurrentFontMode = (cfg.Font == "Normal" or cfg.FontStyle == "Normal") and "Normal" or "Minecraft"
     local AutoScaleEnabled = (cfg.AutoResize ~= false)
     local ConfigFolder = tostring(cfg.ConfigFolder or "DN_AetherConfigs")
     local Theme = Themes[CurrentThemeName]
@@ -292,15 +308,18 @@ function GlassLib:CreateWindow(cfg)
     end
     local BlurObj = Create("BlurEffect", {
         Name = "DN_LiquidBlur",
-        Size = Theme.UseBlur and 14 or 0,
+        Size = Theme.UseBlur and 12 or 0,
         Parent = Lighting
     })
     local Window = {
         _themeName = CurrentThemeName,
         _theme = Theme,
         _toggleStyle = CurrentToggleStyle,
+        _fontMode = CurrentFontMode,
+        _fontRegistry = setmetatable({}, {__mode = "k"}),
         _themeListeners = {},
         _toggleStyleListeners = {},
+        _fontListeners = {},
         _tabs = {},
         _activeTab = nil,
         _minimized = false,
@@ -312,6 +331,27 @@ function GlassLib:CreateWindow(cfg)
         _allSearchItems = {},
         _configFolder = ConfigFolder
     }
+    local function BindFont(obj, weight)
+        if not obj then return obj end
+        local w = weight or "Regular"
+        Window._fontRegistry[obj] = w
+        local pack = FontStyles[Window._fontMode] or FontStyles["Minecraft"]
+        pcall(function() obj.FontFace = pack[w] or pack.Regular end)
+        return obj
+    end
+    function Window:SetFontStyle(mode)
+        self._fontMode = (mode == "Normal") and "Normal" or "Minecraft"
+        local pack = FontStyles[self._fontMode]
+        for obj, w in pairs(self._fontRegistry) do
+            if obj and obj.Parent then
+                pcall(function() obj.FontFace = pack[w] or pack.Regular end)
+            end
+        end
+        for _, fn in ipairs(self._fontListeners) do
+            task.spawn(fn, self._fontMode)
+        end
+    end
+    Window.SetFont = Window.SetFontStyle
     function Window:OnThemeChange(fn)
         table.insert(self._themeListeners, fn)
         task.spawn(fn, self._theme, self._themeName)
@@ -321,7 +361,7 @@ function GlassLib:CreateWindow(cfg)
         self._themeName = themeName
         self._theme = Themes[themeName]
         Tween(BlurObj, 0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, {
-            Size = (not self._minimized and self._theme.UseBlur) and 14 or 0
+            Size = (not self._minimized and self._theme.UseBlur) and 12 or 0
         })
         for _, fn in ipairs(self._themeListeners) do
             task.spawn(fn, self._theme, themeName)
@@ -364,8 +404,8 @@ function GlassLib:CreateWindow(cfg)
     local DynamicIsland = Create("TextButton", {
         Name = "DynamicIsland",
         AnchorPoint = Vector2.new(0.5, 0),
-        Size = UDim2.new(0, 350, 0, 36),
-        Position = UDim2.new(0.5, 0, 0, 10),
+        Size = UDim2.new(0, 320, 0, 32),
+        Position = UDim2.new(0.5, 0, 0, 8),
         BackgroundColor3 = Theme.WindowBg,
         BackgroundTransparency = 0.12,
         Text = "",
@@ -374,47 +414,45 @@ function GlassLib:CreateWindow(cfg)
     }, {
         Create("UICorner", {CornerRadius = UDim.new(1, 0)})
     })
+    local IslandScale = Create("UIScale", {Scale = 1, Parent = DynamicIsland})
     local IslandStroke = Create("UIStroke", {
         Color = Theme.Accent,
         Thickness = 1.2,
         Transparency = 0.25,
         Parent = DynamicIsland
     })
-    MakeDraggable(DynamicIsland, DynamicIsland, nil)
-    local IslandDot = Create("TextLabel", {
-        Size = UDim2.new(0, 68, 1, 0),
-        Position = UDim2.new(0, 14, 0, 0),
+    MakeDraggable(DynamicIsland, DynamicIsland, IslandScale)
+    local IslandDot = BindFont(Create("TextLabel", {
+        Size = UDim2.new(0, 62, 1, 0),
+        Position = UDim2.new(0, 12, 0, 0),
         BackgroundTransparency = 1,
         Text = "● LIVE",
-        Font = Enum.Font.GothamBold,
         TextSize = 11,
         TextColor3 = Theme.Accent,
         TextXAlignment = Enum.TextXAlignment.Left,
         Parent = DynamicIsland
-    })
-    local IslandTitle = Create("TextLabel", {
-        Size = UDim2.new(1, -175, 1, 0),
-        Position = UDim2.new(0, 78, 0, 0),
+    }), "Bold")
+    local IslandTitle = BindFont(Create("TextLabel", {
+        Size = UDim2.new(1, -165, 1, 0),
+        Position = UDim2.new(0, 72, 0, 0),
         BackgroundTransparency = 1,
         Text = TitleText,
-        Font = Enum.Font.GothamBold,
         TextSize = 12,
         TextColor3 = Theme.Text,
         TextXAlignment = Enum.TextXAlignment.Left,
         TextTruncate = Enum.TextTruncate.AtEnd,
         Parent = DynamicIsland
-    })
-    local IslandTelemetry = Create("TextLabel", {
-        Size = UDim2.new(0, 92, 1, 0),
-        Position = UDim2.new(1, -104, 0, 0),
+    }), "Bold")
+    local IslandTelemetry = BindFont(Create("TextLabel", {
+        Size = UDim2.new(0, 88, 1, 0),
+        Position = UDim2.new(1, -98, 0, 0),
         BackgroundTransparency = 1,
         Text = "60 FPS | 00:00",
-        Font = Enum.Font.Code,
         TextSize = 11,
         TextColor3 = Theme.SubText,
         TextXAlignment = Enum.TextXAlignment.Right,
         Parent = DynamicIsland
-    })
+    }), "Mono")
     Window._islandTitle = IslandTitle
     Window._islandMark = IslandDot
     Window._islandMono = IslandTelemetry
@@ -443,7 +481,7 @@ function GlassLib:CreateWindow(cfg)
         ClipsDescendants = true,
         Parent = ScreenGui
     }, {
-        Create("UICorner", {CornerRadius = UDim.new(0, 16)})
+        Create("UICorner", {CornerRadius = UDim.new(0, 14)})
     })
     local WindowScale = Create("UIScale", {
         Scale = 1,
@@ -451,7 +489,7 @@ function GlassLib:CreateWindow(cfg)
     })
     local MainStroke = Create("UIStroke", {
         Color = Theme.Stroke,
-        Thickness = 1.4,
+        Thickness = 1.3,
         Transparency = Theme.StrokeTrans,
         Parent = MainFrame
     }, {
@@ -471,7 +509,7 @@ function GlassLib:CreateWindow(cfg)
         ZIndex = 0,
         Parent = MainFrame
     }, {
-        Create("UICorner", {CornerRadius = UDim.new(0, 16)}),
+        Create("UICorner", {CornerRadius = UDim.new(0, 14)}),
         Create("UIGradient", {
             Rotation = 45,
             Color = ColorSequence.new({
@@ -487,49 +525,49 @@ function GlassLib:CreateWindow(cfg)
         })
     })
     local Topbar = Create("Frame", {
-        Size = UDim2.new(1, 0, 0, 54),
+        Size = UDim2.new(1, 0, 0, 48),
         BackgroundTransparency = 1,
         Parent = MainFrame
     })
     MakeDraggable(Topbar, MainFrame, WindowScale)
     local TopLogo = Create("ImageLabel", {
-        Size = UDim2.new(0, 22, 0, 22),
-        Position = UDim2.new(0, 18, 0.5, -11),
+        Size = UDim2.new(0, 20, 0, 20),
+        Position = UDim2.new(0, 16, 0.5, -10),
         BackgroundTransparency = 1,
         ImageColor3 = Theme.Accent,
         Parent = Topbar
     })
     ApplyWindIcon(TopLogo, cfg.Icon or "sparkles")
-    local TitleLbl = Create("TextLabel", {
-        Size = UDim2.new(0, 210, 0, 20),
-        Position = UDim2.new(0, 48, 0, 10),
+    local TitleLbl = BindFont(Create("TextLabel", {
+        Size = UDim2.new(0, 175, 0, 18),
+        Position = UDim2.new(0, 44, 0, 8),
         BackgroundTransparency = 1,
         Text = TitleText,
-        Font = Enum.Font.GothamBold,
-        TextSize = 15,
+        TextSize = 14,
         TextColor3 = Theme.Text,
         TextXAlignment = Enum.TextXAlignment.Left,
+        TextTruncate = Enum.TextTruncate.AtEnd,
         Parent = Topbar
-    })
-    local SubTitleLbl = Create("TextLabel", {
-        Size = UDim2.new(0, 210, 0, 14),
-        Position = UDim2.new(0, 48, 0, 29),
+    }), "Bold")
+    local SubTitleLbl = BindFont(Create("TextLabel", {
+        Size = UDim2.new(0, 175, 0, 13),
+        Position = UDim2.new(0, 44, 0, 26),
         BackgroundTransparency = 1,
         Text = SubTitleText,
-        Font = Enum.Font.Gotham,
-        TextSize = 11,
+        TextSize = 10,
         TextColor3 = Theme.SubText,
         TextXAlignment = Enum.TextXAlignment.Left,
+        TextTruncate = Enum.TextTruncate.AtEnd,
         Parent = Topbar
-    })
+    }), "Regular")
     local SearchBar = Create("Frame", {
-        Size = UDim2.new(0, 220, 0, 32),
-        Position = UDim2.new(1, -405, 0.5, -16),
+        Size = UDim2.new(0, 185, 0, 30),
+        Position = UDim2.new(1, -430, 0.5, -15),
         BackgroundColor3 = Theme.InputBg,
         BackgroundTransparency = Theme.InputTrans,
         Parent = Topbar
     }, {
-        Create("UICorner", {CornerRadius = UDim.new(0, 9)})
+        Create("UICorner", {CornerRadius = UDim.new(0, 8)})
     })
     local SearchStroke = Create("UIStroke", {
         Color = Theme.Stroke,
@@ -538,41 +576,70 @@ function GlassLib:CreateWindow(cfg)
         Parent = SearchBar
     })
     local SearchIcon = Create("ImageLabel", {
-        Size = UDim2.new(0, 15, 0, 15),
-        Position = UDim2.new(0, 10, 0.5, -7.5),
+        Size = UDim2.new(0, 14, 0, 14),
+        Position = UDim2.new(0, 9, 0.5, -7),
         BackgroundTransparency = 1,
         ImageColor3 = Theme.SubText,
         Parent = SearchBar
     })
     ApplyWindIcon(SearchIcon, "search")
-    local SearchInput = Create("TextBox", {
-        Size = UDim2.new(1, -34, 1, 0),
-        Position = UDim2.new(0, 30, 0, 0),
+    local SearchInput = BindFont(Create("TextBox", {
+        Size = UDim2.new(1, -30, 1, 0),
+        Position = UDim2.new(0, 27, 0, 0),
         BackgroundTransparency = 1,
-        PlaceholderText = "Search components (Ctrl+K)...",
+        PlaceholderText = "Search (Ctrl+K)...",
         PlaceholderColor3 = Theme.SubText,
         Text = "",
-        Font = Enum.Font.Gotham,
-        TextSize = 12,
+        TextSize = 11,
         TextColor3 = Theme.Text,
         TextXAlignment = Enum.TextXAlignment.Left,
         ClearTextOnFocus = false,
         Parent = SearchBar
+    }), "Regular")
+    local FontQuickBtn = BindFont(Create("TextButton", {
+        Size = UDim2.new(0, 74, 0, 30),
+        Position = UDim2.new(1, -238, 0.5, -15),
+        BackgroundColor3 = Theme.CardBg,
+        BackgroundTransparency = Theme.CardTrans,
+        Text = CurrentFontMode == "Minecraft" and "Aa Pixel" or "Aa Normal",
+        TextSize = 11,
+        TextColor3 = Theme.Accent,
+        AutoButtonColor = false,
+        Parent = Topbar
+    }, {
+        Create("UICorner", {CornerRadius = UDim.new(0, 8)})
+    }), "Medium")
+    local FontQuickStroke = Create("UIStroke", {
+        Color = Theme.Stroke,
+        Thickness = 1,
+        Transparency = Theme.StrokeTrans,
+        Parent = FontQuickBtn
     })
-    local StyleQuickBtn = Create("TextButton", {
-        Size = UDim2.new(0, 96, 0, 32),
-        Position = UDim2.new(1, -176, 0.5, -16),
+    FontQuickBtn.MouseButton1Click:Connect(function()
+        local nextFont = (Window._fontMode == "Minecraft") and "Normal" or "Minecraft"
+        Window:SetFontStyle(nextFont)
+        Window:Notify({
+            Title = "Font Changed",
+            Content = "Đã đổi font thành: " .. nextFont,
+            Duration = 2
+        })
+    end)
+    table.insert(Window._fontListeners, function(fMode)
+        FontQuickBtn.Text = (fMode == "Minecraft") and "Aa Pixel" or "Aa Normal"
+    end)
+    local StyleQuickBtn = BindFont(Create("TextButton", {
+        Size = UDim2.new(0, 84, 0, 30),
+        Position = UDim2.new(1, -158, 0.5, -15),
         BackgroundColor3 = Theme.CardBg,
         BackgroundTransparency = Theme.CardTrans,
         Text = CurrentToggleStyle == "Switch" and "● Switch" or "☑ Checkbox",
-        Font = Enum.Font.GothamMedium,
         TextSize = 11,
         TextColor3 = Theme.Text,
         AutoButtonColor = false,
         Parent = Topbar
     }, {
         Create("UICorner", {CornerRadius = UDim.new(0, 8)})
-    })
+    }), "Medium")
     local StyleQuickStroke = Create("UIStroke", {
         Color = Theme.Stroke,
         Thickness = 1,
@@ -587,8 +654,8 @@ function GlassLib:CreateWindow(cfg)
         StyleQuickBtn.Text = (st == "Switch") and "● Switch" or "☑ Checkbox"
     end)
     local ThemeQuickBtn = Create("TextButton", {
-        Size = UDim2.new(0, 32, 0, 32),
-        Position = UDim2.new(1, -74, 0.5, -16),
+        Size = UDim2.new(0, 30, 0, 30),
+        Position = UDim2.new(1, -68, 0.5, -15),
         BackgroundColor3 = Theme.CardBg,
         BackgroundTransparency = Theme.CardTrans,
         Text = "",
@@ -597,9 +664,15 @@ function GlassLib:CreateWindow(cfg)
     }, {
         Create("UICorner", {CornerRadius = UDim.new(0, 8)})
     })
+    local ThemeQuickStroke = Create("UIStroke", {
+        Color = Theme.Stroke,
+        Thickness = 1,
+        Transparency = Theme.StrokeTrans,
+        Parent = ThemeQuickBtn
+    })
     local ThemeQuickIcon = Create("ImageLabel", {
-        Size = UDim2.new(0, 16, 0, 16),
-        Position = UDim2.new(0.5, -8, 0.5, -8),
+        Size = UDim2.new(0, 15, 0, 15),
+        Position = UDim2.new(0.5, -7.5, 0.5, -7.5),
         BackgroundTransparency = 1,
         ImageColor3 = Theme.Accent,
         Parent = ThemeQuickBtn
@@ -616,8 +689,8 @@ function GlassLib:CreateWindow(cfg)
         })
     end)
     local MinBtn = Create("TextButton", {
-        Size = UDim2.new(0, 32, 0, 32),
-        Position = UDim2.new(1, -36, 0.5, -16),
+        Size = UDim2.new(0, 30, 0, 30),
+        Position = UDim2.new(1, -34, 0.5, -15),
         BackgroundColor3 = Theme.CardBg,
         BackgroundTransparency = Theme.CardTrans,
         Text = "",
@@ -626,14 +699,42 @@ function GlassLib:CreateWindow(cfg)
     }, {
         Create("UICorner", {CornerRadius = UDim.new(0, 8)})
     })
-    local MinIcon = Create("ImageLabel", {
-        Size = UDim2.new(0, 16, 0, 16),
-        Position = UDim2.new(0.5, -8, 0.5, -8),
-        BackgroundTransparency = 1,
-        ImageColor3 = Theme.Text,
+    local MinBtnStroke = Create("UIStroke", {
+        Color = Theme.Stroke,
+        Thickness = 1,
+        Transparency = Theme.StrokeTrans,
         Parent = MinBtn
     })
-    ApplyWindIcon(MinIcon, "minus")
+    local XBar1 = Create("Frame", {
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.new(0.5, 0, 0.5, 0),
+        Size = UDim2.new(0, 13, 0, 2),
+        Rotation = 45,
+        BackgroundColor3 = Theme.Text,
+        BorderSizePixel = 0,
+        Parent = MinBtn
+    }, {
+        Create("UICorner", {CornerRadius = UDim.new(1, 0)})
+    })
+    local XBar2 = Create("Frame", {
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.new(0.5, 0, 0.5, 0),
+        Size = UDim2.new(0, 13, 0, 2),
+        Rotation = -45,
+        BackgroundColor3 = Theme.Text,
+        BorderSizePixel = 0,
+        Parent = MinBtn
+    }, {
+        Create("UICorner", {CornerRadius = UDim.new(1, 0)})
+    })
+    MinBtn.MouseEnter:Connect(function()
+        Tween(XBar1, 0.15, nil, nil, {BackgroundColor3 = Theme.Accent, Rotation = 135})
+        Tween(XBar2, 0.15, nil, nil, {BackgroundColor3 = Theme.Accent, Rotation = 45})
+    end)
+    MinBtn.MouseLeave:Connect(function()
+        Tween(XBar1, 0.15, nil, nil, {BackgroundColor3 = Window._theme.Text, Rotation = 45})
+        Tween(XBar2, 0.15, nil, nil, {BackgroundColor3 = Window._theme.Text, Rotation = -45})
+    end)
     local function ToggleMinimize()
         Window._minimized = not Window._minimized
         if Window._minimized then
@@ -648,7 +749,7 @@ function GlassLib:CreateWindow(cfg)
         else
             MainFrame.Visible = true
             Tween(BlurObj, 0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, {
-                Size = Window._theme.UseBlur and 14 or 0
+                Size = Window._theme.UseBlur and 12 or 0
             })
             Tween(MainFrame, 0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out, {
                 Size = UDim2.new(0, Window._baseWidth, 0, Window._baseHeight),
@@ -674,13 +775,13 @@ function GlassLib:CreateWindow(cfg)
         end
     end)
     local Sidebar = Create("Frame", {
-        Size = UDim2.new(0, 185, 1, -68),
-        Position = UDim2.new(0, 12, 0, 56),
+        Size = UDim2.new(0, 155, 1, -60),
+        Position = UDim2.new(0, 10, 0, 50),
         BackgroundColor3 = Theme.SidebarBg,
         BackgroundTransparency = Theme.SidebarTrans,
         Parent = MainFrame
     }, {
-        Create("UICorner", {CornerRadius = UDim.new(0, 12)})
+        Create("UICorner", {CornerRadius = UDim.new(0, 11)})
     })
     local SidebarStroke = Create("UIStroke", {
         Color = Theme.Stroke,
@@ -689,8 +790,8 @@ function GlassLib:CreateWindow(cfg)
         Parent = Sidebar
     })
     local ActiveIndicator = Create("Frame", {
-        Size = UDim2.new(0, 4, 0, 22),
-        Position = UDim2.new(0, 6, 0, 16),
+        Size = UDim2.new(0, 4, 0, 20),
+        Position = UDim2.new(0, 5, 0, 15),
         BackgroundColor3 = Theme.Accent,
         ZIndex = 4,
         Parent = Sidebar
@@ -707,18 +808,18 @@ function GlassLib:CreateWindow(cfg)
         Parent = Sidebar
     }, {
         Create("UIListLayout", {
-            Padding = UDim.new(0, 5),
+            Padding = UDim.new(0, 4),
             HorizontalAlignment = Enum.HorizontalAlignment.Center,
             SortOrder = Enum.SortOrder.LayoutOrder
         }),
         Create("UIPadding", {
-            PaddingTop = UDim.new(0, 8),
-            PaddingBottom = UDim.new(0, 8)
+            PaddingTop = UDim.new(0, 7),
+            PaddingBottom = UDim.new(0, 7)
         })
     })
     local PageHolder = Create("Frame", {
-        Size = UDim2.new(1, -215, 1, -68),
-        Position = UDim2.new(0, 205, 0, 56),
+        Size = UDim2.new(1, -180, 1, -60),
+        Position = UDim2.new(0, 172, 0, 50),
         BackgroundTransparency = 1,
         ClipsDescendants = true,
         Parent = MainFrame
@@ -734,14 +835,28 @@ function GlassLib:CreateWindow(cfg)
         local vp = cam.ViewportSize
         if vp.X <= 0 or vp.Y <= 0 then return end
         local isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
-        local maxWRatio = isMobile and 0.88 or 0.94
-        local maxHRatio = isMobile and 0.82 or 0.90
-        local scaleX = (vp.X * maxWRatio) / math.max(580, Window._baseWidth)
-        local scaleY = (vp.Y * maxHRatio) / math.max(360, Window._baseHeight)
-        local targetScale = math.clamp(math.min(scaleX, scaleY), 0.48, 1.0)
+        if isMobile or vp.X < 920 then
+            Sidebar.Size = UDim2.new(0, 132, 1, -56)
+            PageHolder.Position = UDim2.new(0, 148, 0, 48)
+            PageHolder.Size = UDim2.new(1, -156, 1, -56)
+            SearchBar.Size = UDim2.new(0, 138, 0, 28)
+            SearchBar.Position = UDim2.new(1, -376, 0.5, -14)
+        else
+            Sidebar.Size = UDim2.new(0, 155, 1, -60)
+            PageHolder.Position = UDim2.new(0, 172, 0, 50)
+            PageHolder.Size = UDim2.new(1, -180, 1, -60)
+            SearchBar.Size = UDim2.new(0, 185, 0, 30)
+            SearchBar.Position = UDim2.new(1, -430, 0.5, -15)
+        end
+        local maxWRatio = isMobile and 0.74 or 0.82
+        local maxHRatio = isMobile and 0.68 or 0.78
+        local scaleX = (vp.X * maxWRatio) / math.max(540, Window._baseWidth)
+        local scaleY = (vp.Y * maxHRatio) / math.max(340, Window._baseHeight)
+        local targetScale = math.clamp(math.min(scaleX, scaleY), 0.42, 0.95)
         WindowScale.Scale = targetScale
+        IslandScale.Scale = math.clamp(targetScale * 1.05, 0.65, 1.0)
         if NotifyScale then
-            NotifyScale.Scale = math.clamp(targetScale, 0.72, 1.0)
+            NotifyScale.Scale = math.clamp(targetScale, 0.65, 0.95)
         end
         local halfW = (Window._baseWidth * targetScale) * 0.5
         local halfH = (Window._baseHeight * targetScale) * 0.5
@@ -751,20 +866,19 @@ function GlassLib:CreateWindow(cfg)
         local clampedY = math.clamp(curY, math.min(halfH + 8, vp.Y * 0.5), math.max(vp.Y - halfH - 8, vp.Y * 0.5))
         MainFrame.Position = UDim2.new(0, clampedX, 0, clampedY)
     end
-    local ResizeGrip = Create("TextButton", {
+    local ResizeGrip = BindFont(Create("TextButton", {
         AnchorPoint = Vector2.new(1, 1),
         Position = UDim2.new(1, -4, 1, -4),
         Size = UDim2.new(0, 18, 0, 18),
         BackgroundTransparency = 1,
         Text = "◢",
-        Font = Enum.Font.GothamBold,
-        TextSize = 12,
+        TextSize = 11,
         TextColor3 = Theme.SubText,
         TextTransparency = 0.35,
         AutoButtonColor = false,
         ZIndex = 10,
         Parent = MainFrame
-    })
+    }), "Bold")
     local resizing, resizeInput, resizeStart, startW, startH = false, nil, nil, 0, 0
     ResizeGrip.InputBegan:Connect(function(inp)
         if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
@@ -784,10 +898,10 @@ function GlassLib:CreateWindow(cfg)
     end)
     UserInputService.InputChanged:Connect(function(inp)
         if inp == resizeInput and resizing then
-            local scale = math.max(0.5, WindowScale.Scale)
+            local scale = math.max(0.45, WindowScale.Scale)
             local delta = (inp.Position - resizeStart) / scale
-            Window._baseWidth = math.clamp(startW + delta.X, 620, 980)
-            Window._baseHeight = math.clamp(startH + delta.Y, 380, 680)
+            Window._baseWidth = math.clamp(startW + delta.X, 540, 920)
+            Window._baseHeight = math.clamp(startH + delta.Y, 340, 620)
             MainFrame.Size = UDim2.new(0, Window._baseWidth, 0, Window._baseHeight)
         end
     end)
@@ -834,12 +948,17 @@ function GlassLib:CreateWindow(cfg)
         Tween(SearchIcon, 0.25, nil, nil, {ImageColor3 = th.SubText})
         SearchInput.TextColor3 = th.Text
         SearchInput.PlaceholderColor3 = th.SubText
+        Tween(FontQuickBtn, 0.25, nil, nil, {BackgroundColor3 = th.CardBg, BackgroundTransparency = th.CardTrans, TextColor3 = th.Accent})
+        Tween(FontQuickStroke, 0.25, nil, nil, {Color = th.Stroke, Transparency = th.StrokeTrans})
         Tween(StyleQuickBtn, 0.25, nil, nil, {BackgroundColor3 = th.CardBg, BackgroundTransparency = th.CardTrans, TextColor3 = th.Text})
         Tween(StyleQuickStroke, 0.25, nil, nil, {Color = th.Stroke, Transparency = th.StrokeTrans})
         Tween(ThemeQuickBtn, 0.25, nil, nil, {BackgroundColor3 = th.CardBg, BackgroundTransparency = th.CardTrans})
+        Tween(ThemeQuickStroke, 0.25, nil, nil, {Color = th.Stroke, Transparency = th.StrokeTrans})
         Tween(ThemeQuickIcon, 0.25, nil, nil, {ImageColor3 = th.Accent})
         Tween(MinBtn, 0.25, nil, nil, {BackgroundColor3 = th.CardBg, BackgroundTransparency = th.CardTrans})
-        Tween(MinIcon, 0.25, nil, nil, {ImageColor3 = th.Text})
+        Tween(MinBtnStroke, 0.25, nil, nil, {Color = th.Stroke, Transparency = th.StrokeTrans})
+        Tween(XBar1, 0.25, nil, nil, {BackgroundColor3 = th.Text})
+        Tween(XBar2, 0.25, nil, nil, {BackgroundColor3 = th.Text})
         Tween(Sidebar, 0.25, nil, nil, {BackgroundColor3 = th.SidebarBg, BackgroundTransparency = th.SidebarTrans})
         Tween(SidebarStroke, 0.25, nil, nil, {Color = th.Stroke, Transparency = th.StrokeTrans})
         Tween(ActiveIndicator, 0.25, nil, nil, {BackgroundColor3 = th.Accent})
@@ -847,8 +966,8 @@ function GlassLib:CreateWindow(cfg)
     end)
     local NotifyContainer = Create("Frame", {
         AnchorPoint = Vector2.new(1, 1),
-        Size = UDim2.new(0, 290, 1, -24),
-        Position = UDim2.new(1, -14, 1, -12),
+        Size = UDim2.new(0, 275, 1, -24),
+        Position = UDim2.new(1, -12, 1, -12),
         BackgroundTransparency = 1,
         Parent = ScreenGui
     }, {
@@ -859,7 +978,7 @@ function GlassLib:CreateWindow(cfg)
         })
     })
     NotifyScale = Create("UIScale", {
-        Scale = math.clamp(WindowScale.Scale, 0.72, 1.0),
+        Scale = math.clamp(WindowScale.Scale, 0.68, 0.95),
         Parent = NotifyContainer
     })
     function Window:Notify(nCfg)
@@ -869,7 +988,7 @@ function GlassLib:CreateWindow(cfg)
         local nDuration = tonumber(nCfg.Duration) or 3.5
         local th = self._theme
         local Card = Create("Frame", {
-            Size = UDim2.new(1, 0, 0, 62),
+            Size = UDim2.new(1, 0, 0, 58),
             BackgroundColor3 = th.WindowBg,
             BackgroundTransparency = math.clamp(th.WindowTrans - 0.05, 0.05, 0.35),
             ClipsDescendants = true,
@@ -879,37 +998,35 @@ function GlassLib:CreateWindow(cfg)
             Create("UIStroke", {Color = th.Accent, Thickness = 1.2, Transparency = 0.25})
         })
         local IconImg = Create("ImageLabel", {
-            Size = UDim2.new(0, 18, 0, 18),
-            Position = UDim2.new(0, 12, 0, 12),
+            Size = UDim2.new(0, 16, 0, 16),
+            Position = UDim2.new(0, 12, 0, 11),
             BackgroundTransparency = 1,
             ImageColor3 = th.Accent,
             Parent = Card
         })
         ApplyWindIcon(IconImg, nCfg.Icon or "bell")
-        Create("TextLabel", {
-            Size = UDim2.new(1, -44, 0, 18),
-            Position = UDim2.new(0, 36, 0, 9),
+        BindFont(Create("TextLabel", {
+            Size = UDim2.new(1, -42, 0, 17),
+            Position = UDim2.new(0, 34, 0, 8),
             BackgroundTransparency = 1,
             Text = nTitle,
-            Font = Enum.Font.GothamBold,
-            TextSize = 13,
+            TextSize = 12,
             TextColor3 = th.Text,
             TextXAlignment = Enum.TextXAlignment.Left,
             Parent = Card
-        })
-        Create("TextLabel", {
-            Size = UDim2.new(1, -44, 0, 28),
-            Position = UDim2.new(0, 36, 0, 27),
+        }), "Bold")
+        BindFont(Create("TextLabel", {
+            Size = UDim2.new(1, -42, 0, 26),
+            Position = UDim2.new(0, 34, 0, 25),
             BackgroundTransparency = 1,
             Text = nContent,
-            Font = Enum.Font.Gotham,
-            TextSize = 11,
+            TextSize = 10,
             TextColor3 = th.SubText,
             TextWrapped = true,
             TextXAlignment = Enum.TextXAlignment.Left,
             TextYAlignment = Enum.TextYAlignment.Top,
             Parent = Card
-        })
+        }), "Regular")
         local ProgBar = Create("Frame", {
             Size = UDim2.new(1, 0, 0, 3),
             Position = UDim2.new(0, 0, 1, -3),
@@ -933,7 +1050,7 @@ function GlassLib:CreateWindow(cfg)
         local tabIcon = tostring(tCfg.Icon or "layers")
         local tabIndex = #self._tabs + 1
         local TabBtn = Create("TextButton", {
-            Size = UDim2.new(1, -18, 0, 38),
+            Size = UDim2.new(1, -14, 0, 34),
             BackgroundColor3 = self._theme.CardBg,
             BackgroundTransparency = 1,
             Text = "",
@@ -941,27 +1058,27 @@ function GlassLib:CreateWindow(cfg)
             LayoutOrder = tabIndex,
             Parent = TabScroll
         }, {
-            Create("UICorner", {CornerRadius = UDim.new(0, 9)})
+            Create("UICorner", {CornerRadius = UDim.new(0, 8)})
         })
         local TIcon = Create("ImageLabel", {
-            Size = UDim2.new(0, 17, 0, 17),
-            Position = UDim2.new(0, 12, 0.5, -8.5),
+            Size = UDim2.new(0, 16, 0, 16),
+            Position = UDim2.new(0, 11, 0.5, -8),
             BackgroundTransparency = 1,
             ImageColor3 = self._theme.SubText,
             Parent = TabBtn
         })
         ApplyWindIcon(TIcon, tabIcon)
-        local TLbl = Create("TextLabel", {
-            Size = UDim2.new(1, -40, 1, 0),
-            Position = UDim2.new(0, 36, 0, 0),
+        local TLbl = BindFont(Create("TextLabel", {
+            Size = UDim2.new(1, -36, 1, 0),
+            Position = UDim2.new(0, 33, 0, 0),
             BackgroundTransparency = 1,
             Text = tabTitle,
-            Font = Enum.Font.GothamMedium,
-            TextSize = 13,
+            TextSize = 12,
             TextColor3 = self._theme.SubText,
             TextXAlignment = Enum.TextXAlignment.Left,
+            TextTruncate = Enum.TextTruncate.AtEnd,
             Parent = TabBtn
-        })
+        }), "Medium")
         local Page = Create("ScrollingFrame", {
             Size = UDim2.new(1, 0, 1, 0),
             Position = UDim2.new(0, 0, 0, 0),
@@ -975,12 +1092,12 @@ function GlassLib:CreateWindow(cfg)
             Parent = PageHolder
         }, {
             Create("UIListLayout", {
-                Padding = UDim.new(0, 8),
+                Padding = UDim.new(0, 7),
                 SortOrder = Enum.SortOrder.LayoutOrder
             }),
             Create("UIPadding", {
-                PaddingTop = UDim.new(0, 4),
-                PaddingBottom = UDim.new(0, 14),
+                PaddingTop = UDim.new(0, 3),
+                PaddingBottom = UDim.new(0, 12),
                 PaddingLeft = UDim.new(0, 2),
                 PaddingRight = UDim.new(0, 8)
             })
@@ -1001,18 +1118,18 @@ function GlassLib:CreateWindow(cfg)
                 Tween(other._btn, 0.22, nil, nil, {BackgroundTransparency = 1})
                 Tween(other._icon, 0.22, nil, nil, {ImageColor3 = th.SubText})
                 Tween(other._lbl, 0.22, nil, nil, {TextColor3 = th.SubText})
-                other._lbl.Font = Enum.Font.GothamMedium
+                BindFont(other._lbl, "Medium")
             end
             Window._activeTab = TabObj
-            TabObj._lbl.Font = Enum.Font.GothamBold
+            BindFont(TabObj._lbl, "Bold")
             Tween(TabBtn, 0.25, nil, nil, {BackgroundColor3 = th.CardBg, BackgroundTransparency = th.CardTrans})
             Tween(TIcon, 0.25, nil, nil, {ImageColor3 = th.Accent})
             Tween(TLbl, 0.25, nil, nil, {TextColor3 = th.Text})
-            local targetY = 8 + (tabIndex - 1) * 43 + 8
+            local targetY = 7 + (tabIndex - 1) * 38 + 7
             Tween(ActiveIndicator, 0.32, Enum.EasingStyle.Back, Enum.EasingDirection.Out, {
-                Position = UDim2.new(0, 5, 0, targetY)
+                Position = UDim2.new(0, 4, 0, targetY)
             })
-            Page.Position = UDim2.new(0, 0, 0, 18)
+            Page.Position = UDim2.new(0, 0, 0, 16)
             Page.Visible = true
             Tween(Page, 0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.Out, {
                 Position = UDim2.new(0, 0, 0, 0)
@@ -1035,23 +1152,22 @@ function GlassLib:CreateWindow(cfg)
             self._order += 1
             local sTitle = type(title) == "table" and title.Title or tostring(title or "SECTION")
             local Holder = Create("Frame", {
-                Size = UDim2.new(1, 0, 0, 24),
+                Size = UDim2.new(1, 0, 0, 22),
                 BackgroundTransparency = 1,
                 LayoutOrder = self._order,
                 Parent = Page
             })
             Holder:SetAttribute("SearchKey", sTitle)
-            local Lbl = Create("TextLabel", {
+            local Lbl = BindFont(Create("TextLabel", {
                 Size = UDim2.new(1, 0, 1, 0),
-                Position = UDim2.new(0, 4, 0, 4),
+                Position = UDim2.new(0, 4, 0, 3),
                 BackgroundTransparency = 1,
                 Text = string.upper(sTitle),
-                Font = Enum.Font.GothamBold,
                 TextSize = 11,
                 TextColor3 = Window._theme.Accent,
                 TextXAlignment = Enum.TextXAlignment.Left,
                 Parent = Holder
-            })
+            }), "Bold")
             Window:OnThemeChange(function(th) Lbl.TextColor3 = th.Accent end)
             return Holder
         end
@@ -1063,7 +1179,7 @@ function GlassLib:CreateWindow(cfg)
             local bDesc = tostring(bCfg.Description or "")
             local callback = bCfg.Callback or function() end
             local Card = Create("TextButton", {
-                Size = UDim2.new(1, 0, 0, bDesc ~= "" and 54 or 42),
+                Size = UDim2.new(1, 0, 0, bDesc ~= "" and 50 or 40),
                 BackgroundColor3 = Window._theme.CardBg,
                 BackgroundTransparency = Window._theme.CardTrans,
                 Text = "",
@@ -1071,7 +1187,7 @@ function GlassLib:CreateWindow(cfg)
                 LayoutOrder = self._order,
                 Parent = Page
             }, {
-                Create("UICorner", {CornerRadius = UDim.new(0, 10)})
+                Create("UICorner", {CornerRadius = UDim.new(0, 9)})
             })
             Card:SetAttribute("SearchKey", bTitle .. " " .. bDesc)
             RippleEffect(Card, Window._theme.Accent)
@@ -1081,34 +1197,32 @@ function GlassLib:CreateWindow(cfg)
                 Transparency = Window._theme.StrokeTrans,
                 Parent = Card
             })
-            local TLbl = Create("TextLabel", {
-                Size = UDim2.new(1, -50, 0, 18),
-                Position = UDim2.new(0, 14, 0, bDesc ~= "" and 9 or 12),
+            local TLbl = BindFont(Create("TextLabel", {
+                Size = UDim2.new(1, -48, 0, 17),
+                Position = UDim2.new(0, 13, 0, bDesc ~= "" and 8 or 11),
                 BackgroundTransparency = 1,
                 Text = bTitle,
-                Font = Enum.Font.GothamBold,
-                TextSize = 13,
+                TextSize = 12,
                 TextColor3 = Window._theme.Text,
                 TextXAlignment = Enum.TextXAlignment.Left,
                 Parent = Card
-            })
+            }), "Bold")
             local DLbl = nil
             if bDesc ~= "" then
-                DLbl = Create("TextLabel", {
-                    Size = UDim2.new(1, -50, 0, 15),
-                    Position = UDim2.new(0, 14, 0, 29),
+                DLbl = BindFont(Create("TextLabel", {
+                    Size = UDim2.new(1, -48, 0, 14),
+                    Position = UDim2.new(0, 13, 0, 27),
                     BackgroundTransparency = 1,
                     Text = bDesc,
-                    Font = Enum.Font.Gotham,
-                    TextSize = 11,
+                    TextSize = 10,
                     TextColor3 = Window._theme.SubText,
                     TextXAlignment = Enum.TextXAlignment.Left,
                     Parent = Card
-                })
+                }), "Regular")
             end
             local Arrow = Create("ImageLabel", {
-                Size = UDim2.new(0, 16, 0, 16),
-                Position = UDim2.new(1, -28, 0.5, -8),
+                Size = UDim2.new(0, 15, 0, 15),
+                Position = UDim2.new(1, -26, 0.5, -7.5),
                 BackgroundTransparency = 1,
                 ImageColor3 = Window._theme.Accent,
                 Parent = Card
@@ -1121,9 +1235,9 @@ function GlassLib:CreateWindow(cfg)
                 Tween(Card, 0.18, nil, nil, {BackgroundColor3 = Window._theme.CardBg})
             end)
             Card.MouseButton1Click:Connect(function()
-                Tween(Arrow, 0.12, Enum.EasingStyle.Back, Enum.EasingDirection.Out, {Position = UDim2.new(1, -22, 0.5, -8)})
+                Tween(Arrow, 0.12, Enum.EasingStyle.Back, Enum.EasingDirection.Out, {Position = UDim2.new(1, -20, 0.5, -7.5)})
                 task.delay(0.12, function()
-                    Tween(Arrow, 0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, {Position = UDim2.new(1, -28, 0.5, -8)})
+                    Tween(Arrow, 0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, {Position = UDim2.new(1, -26, 0.5, -7.5)})
                 end)
                 task.spawn(callback)
             end)
@@ -1148,13 +1262,13 @@ function GlassLib:CreateWindow(cfg)
             local callback = tgCfg.Callback or function() end
             if flag then Window._flags[flag] = state end
             local Card = Create("Frame", {
-                Size = UDim2.new(1, 0, 0, tDesc ~= "" and 54 or 42),
+                Size = UDim2.new(1, 0, 0, tDesc ~= "" and 50 or 40),
                 BackgroundColor3 = Window._theme.CardBg,
                 BackgroundTransparency = Window._theme.CardTrans,
                 LayoutOrder = self._order,
                 Parent = Page
             }, {
-                Create("UICorner", {CornerRadius = UDim.new(0, 10)})
+                Create("UICorner", {CornerRadius = UDim.new(0, 9)})
             })
             Card:SetAttribute("SearchKey", tTitle .. " " .. tDesc)
             local Stroke = Create("UIStroke", {
@@ -1163,35 +1277,33 @@ function GlassLib:CreateWindow(cfg)
                 Transparency = Window._theme.StrokeTrans,
                 Parent = Card
             })
-            local TLbl = Create("TextLabel", {
-                Size = UDim2.new(1, -75, 0, 18),
-                Position = UDim2.new(0, 14, 0, tDesc ~= "" and 9 or 12),
+            local TLbl = BindFont(Create("TextLabel", {
+                Size = UDim2.new(1, -70, 0, 17),
+                Position = UDim2.new(0, 13, 0, tDesc ~= "" and 8 or 11),
                 BackgroundTransparency = 1,
                 Text = tTitle,
-                Font = Enum.Font.GothamBold,
-                TextSize = 13,
+                TextSize = 12,
                 TextColor3 = Window._theme.Text,
                 TextXAlignment = Enum.TextXAlignment.Left,
                 Parent = Card
-            })
+            }), "Bold")
             local DLbl = nil
             if tDesc ~= "" then
-                DLbl = Create("TextLabel", {
-                    Size = UDim2.new(1, -75, 0, 15),
-                    Position = UDim2.new(0, 14, 0, 29),
+                DLbl = BindFont(Create("TextLabel", {
+                    Size = UDim2.new(1, -70, 0, 14),
+                    Position = UDim2.new(0, 13, 0, 27),
                     BackgroundTransparency = 1,
                     Text = tDesc,
-                    Font = Enum.Font.Gotham,
-                    TextSize = 11,
+                    TextSize = 10,
                     TextColor3 = Window._theme.SubText,
                     TextXAlignment = Enum.TextXAlignment.Left,
                     Parent = Card
-                })
+                }), "Regular")
             end
             local Track = Create("TextButton", {
                 AnchorPoint = Vector2.new(1, 0.5),
-                Position = UDim2.new(1, -14, 0.5, 0),
-                Size = UDim2.new(0, 44, 0, 24),
+                Position = UDim2.new(1, -13, 0.5, 0),
+                Size = UDim2.new(0, 42, 0, 22),
                 BackgroundColor3 = Window._theme.InputBg,
                 Text = "",
                 AutoButtonColor = false,
@@ -1207,7 +1319,7 @@ function GlassLib:CreateWindow(cfg)
             local Knob = Create("Frame", {
                 AnchorPoint = Vector2.new(0, 0.5),
                 Position = UDim2.new(0, 3, 0.5, 0),
-                Size = UDim2.new(0, 18, 0, 18),
+                Size = UDim2.new(0, 16, 0, 16),
                 BackgroundColor3 = Color3.fromRGB(255, 255, 255),
                 Parent = Track
             }, {
@@ -1231,26 +1343,26 @@ function GlassLib:CreateWindow(cfg)
                     Knob.Visible = false
                     CheckIcon.Visible = true
                     Tween(Track, dur, Enum.EasingStyle.Back, Enum.EasingDirection.Out, {
-                        Size = UDim2.new(0, 24, 0, 24),
+                        Size = UDim2.new(0, 22, 0, 22),
                         BackgroundColor3 = state and th.Accent or th.InputBg
                     })
-                    Tween(TrackCorner, dur, nil, nil, {CornerRadius = UDim.new(0, 7)})
+                    Tween(TrackCorner, dur, nil, nil, {CornerRadius = UDim.new(0, 6)})
                     Tween(TrackStroke, dur, nil, nil, {Color = state and th.Accent or th.Stroke})
                     Tween(CheckIcon, dur, Enum.EasingStyle.Back, Enum.EasingDirection.Out, {
-                        Size = state and UDim2.new(0, 15, 0, 15) or UDim2.new(0, 4, 0, 4),
+                        Size = state and UDim2.new(0, 14, 0, 14) or UDim2.new(0, 4, 0, 4),
                         ImageTransparency = state and 0 or 1
                     })
                 else
                     CheckIcon.Visible = false
                     Knob.Visible = true
                     Tween(Track, dur, Enum.EasingStyle.Quart, Enum.EasingDirection.Out, {
-                        Size = UDim2.new(0, 44, 0, 24),
+                        Size = UDim2.new(0, 42, 0, 22),
                         BackgroundColor3 = state and th.Accent or th.InputBg
                     })
                     Tween(TrackCorner, dur, nil, nil, {CornerRadius = UDim.new(1, 0)})
                     Tween(TrackStroke, dur, nil, nil, {Color = state and th.Accent or th.Stroke})
                     Tween(Knob, dur, Enum.EasingStyle.Back, Enum.EasingDirection.Out, {
-                        Position = state and UDim2.new(1, -21, 0.5, 0) or UDim2.new(0, 3, 0.5, 0),
+                        Position = state and UDim2.new(1, -19, 0.5, 0) or UDim2.new(0, 3, 0.5, 0),
                         BackgroundColor3 = state and Color3.fromRGB(255, 255, 255) or th.SubText
                     })
                 end
@@ -1295,13 +1407,13 @@ function GlassLib:CreateWindow(cfg)
             local callback = sCfg.Callback or function() end
             if flag then Window._flags[flag] = curVal end
             local Card = Create("Frame", {
-                Size = UDim2.new(1, 0, 0, 58),
+                Size = UDim2.new(1, 0, 0, 54),
                 BackgroundColor3 = Window._theme.CardBg,
                 BackgroundTransparency = Window._theme.CardTrans,
                 LayoutOrder = self._order,
                 Parent = Page
             }, {
-                Create("UICorner", {CornerRadius = UDim.new(0, 10)})
+                Create("UICorner", {CornerRadius = UDim.new(0, 9)})
             })
             Card:SetAttribute("SearchKey", sTitle)
             local Stroke = Create("UIStroke", {
@@ -1310,33 +1422,31 @@ function GlassLib:CreateWindow(cfg)
                 Transparency = Window._theme.StrokeTrans,
                 Parent = Card
             })
-            local TLbl = Create("TextLabel", {
-                Size = UDim2.new(1, -100, 0, 18),
-                Position = UDim2.new(0, 14, 0, 9),
+            local TLbl = BindFont(Create("TextLabel", {
+                Size = UDim2.new(1, -96, 0, 17),
+                Position = UDim2.new(0, 13, 0, 8),
                 BackgroundTransparency = 1,
                 Text = sTitle,
-                Font = Enum.Font.GothamBold,
-                TextSize = 13,
+                TextSize = 12,
                 TextColor3 = Window._theme.Text,
                 TextXAlignment = Enum.TextXAlignment.Left,
                 Parent = Card
-            })
-            local ValBadge = Create("TextLabel", {
-                Size = UDim2.new(0, 76, 0, 20),
-                Position = UDim2.new(1, -90, 0, 8),
+            }), "Bold")
+            local ValBadge = BindFont(Create("TextLabel", {
+                Size = UDim2.new(0, 72, 0, 19),
+                Position = UDim2.new(1, -85, 0, 7),
                 BackgroundColor3 = Window._theme.InputBg,
                 BackgroundTransparency = 0.2,
                 Text = tostring(curVal) .. suffix,
-                Font = Enum.Font.Code,
-                TextSize = 12,
+                TextSize = 11,
                 TextColor3 = Window._theme.Accent,
                 Parent = Card
             }, {
                 Create("UICorner", {CornerRadius = UDim.new(0, 6)})
-            })
+            }), "Mono")
             local Rail = Create("TextButton", {
-                Size = UDim2.new(1, -28, 0, 8),
-                Position = UDim2.new(0, 14, 0, 38),
+                Size = UDim2.new(1, -26, 0, 6),
+                Position = UDim2.new(0, 13, 0, 36),
                 BackgroundColor3 = Window._theme.InputBg,
                 Text = "",
                 AutoButtonColor = false,
@@ -1354,22 +1464,54 @@ function GlassLib:CreateWindow(cfg)
                     Color = ColorSequence.new(Window._theme.Accent, Window._theme.AccentSecondary)
                 })
             })
+            local HaloRing = Create("Frame", {
+                AnchorPoint = Vector2.new(0.5, 0.5),
+                Position = UDim2.new(1, 0, 0.5, 0),
+                Size = UDim2.new(0, 0, 0, 0),
+                BackgroundColor3 = Window._theme.Accent,
+                BackgroundTransparency = 1,
+                ZIndex = 3,
+                Parent = Fill
+            }, {
+                Create("UICorner", {CornerRadius = UDim.new(1, 0)})
+            })
+            local HaloStroke = Create("UIStroke", {
+                Color = Window._theme.Accent,
+                Thickness = 1.6,
+                Transparency = 1,
+                Parent = HaloRing
+            })
             local Knob = Create("Frame", {
                 AnchorPoint = Vector2.new(0.5, 0.5),
                 Position = UDim2.new(1, 0, 0.5, 0),
-                Size = UDim2.new(0, 16, 0, 16),
+                Size = UDim2.new(0, 10, 0, 10),
                 BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+                ZIndex = 4,
                 Parent = Fill
             }, {
-                Create("UICorner", {CornerRadius = UDim.new(1, 0)}),
-                Create("UIStroke", {Color = Window._theme.Accent, Thickness = 2})
+                Create("UICorner", {CornerRadius = UDim.new(1, 0)})
+            })
+            local KnobStroke = Create("UIStroke", {
+                Color = Window._theme.Accent,
+                Thickness = 1.6,
+                Parent = Knob
+            })
+            local InnerDot = Create("Frame", {
+                AnchorPoint = Vector2.new(0.5, 0.5),
+                Position = UDim2.new(0.5, 0, 0.5, 0),
+                Size = UDim2.new(0, 0, 0, 0),
+                BackgroundColor3 = Window._theme.Accent,
+                ZIndex = 5,
+                Parent = Knob
+            }, {
+                Create("UICorner", {CornerRadius = UDim.new(1, 0)})
             })
             local dragging = false
             local function SetSliderValue(v)
                 curVal = math.clamp(math.floor(tonumber(v) or minVal + 0.5), minVal, maxVal)
                 if flag then Window._flags[flag] = curVal end
                 ValBadge.Text = tostring(curVal) .. suffix
-                Tween(Fill, 0.08, Enum.EasingStyle.Sine, Enum.EasingDirection.Out, {
+                Tween(Fill, 0.07, Enum.EasingStyle.Sine, Enum.EasingDirection.Out, {
                     Size = UDim2.new((curVal - minVal) / math.max(1, maxVal - minVal), 0, 1, 0)
                 })
                 task.spawn(callback, curVal)
@@ -1380,10 +1522,27 @@ function GlassLib:CreateWindow(cfg)
                 local alpha = math.clamp((input.Position.X - Rail.AbsolutePosition.X) / railWidth, 0, 1)
                 SetSliderValue(minVal + (maxVal - minVal) * alpha)
             end
+            Rail.MouseEnter:Connect(function()
+                if not dragging then
+                    Tween(Knob, 0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, {Size = UDim2.new(0, 13, 0, 13)})
+                end
+            end)
+            Rail.MouseLeave:Connect(function()
+                if not dragging then
+                    Tween(Knob, 0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, {Size = UDim2.new(0, 10, 0, 10)})
+                end
+            end)
             Rail.InputBegan:Connect(function(inp)
                 if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
                     dragging = true
-                    Tween(Knob, 0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out, {Size = UDim2.new(0, 20, 0, 20)})
+                    Tween(Knob, 0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out, {Size = UDim2.new(0, 17, 0, 17)})
+                    Tween(KnobStroke, 0.2, nil, nil, {Thickness = 2.4})
+                    Tween(InnerDot, 0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out, {Size = UDim2.new(0, 6, 0, 6)})
+                    Tween(HaloRing, 0.24, Enum.EasingStyle.Back, Enum.EasingDirection.Out, {
+                        Size = UDim2.new(0, 30, 0, 30),
+                        BackgroundTransparency = 0.78
+                    })
+                    Tween(HaloStroke, 0.24, nil, nil, {Transparency = 0.2})
                     UpdateSliderFromInput(inp)
                 end
             end)
@@ -1391,7 +1550,14 @@ function GlassLib:CreateWindow(cfg)
                 if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
                     if dragging then
                         dragging = false
-                        Tween(Knob, 0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, {Size = UDim2.new(0, 16, 0, 16)})
+                        Tween(Knob, 0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, {Size = UDim2.new(0, 10, 0, 10)})
+                        Tween(KnobStroke, 0.2, nil, nil, {Thickness = 1.6})
+                        Tween(InnerDot, 0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, {Size = UDim2.new(0, 0, 0, 0)})
+                        Tween(HaloRing, 0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, {
+                            Size = UDim2.new(0, 0, 0, 0),
+                            BackgroundTransparency = 1
+                        })
+                        Tween(HaloStroke, 0.22, nil, nil, {Transparency = 1})
                     end
                 end
             end)
@@ -1410,6 +1576,10 @@ function GlassLib:CreateWindow(cfg)
                 ValBadge.TextColor3 = th.Accent
                 Rail.BackgroundColor3 = th.InputBg
                 Fill.BackgroundColor3 = th.Accent
+                KnobStroke.Color = th.Accent
+                InnerDot.BackgroundColor3 = th.Accent
+                HaloRing.BackgroundColor3 = th.Accent
+                HaloStroke.Color = th.Accent
             end)
             return {SetValue = SetSliderValue}
         end
@@ -1428,14 +1598,14 @@ function GlassLib:CreateWindow(cfg)
             if flag then Window._flags[flag] = selected end
             local isOpen = false
             local Card = Create("Frame", {
-                Size = UDim2.new(1, 0, 0, 44),
+                Size = UDim2.new(1, 0, 0, 42),
                 BackgroundColor3 = Window._theme.CardBg,
                 BackgroundTransparency = Window._theme.CardTrans,
                 ClipsDescendants = true,
                 LayoutOrder = self._order,
                 Parent = Page
             }, {
-                Create("UICorner", {CornerRadius = UDim.new(0, 10)})
+                Create("UICorner", {CornerRadius = UDim.new(0, 9)})
             })
             Card:SetAttribute("SearchKey", dTitle)
             local Stroke = Create("UIStroke", {
@@ -1445,60 +1615,57 @@ function GlassLib:CreateWindow(cfg)
                 Parent = Card
             })
             local HeaderBtn = Create("TextButton", {
-                Size = UDim2.new(1, 0, 0, 44),
+                Size = UDim2.new(1, 0, 0, 42),
                 BackgroundTransparency = 1,
                 Text = "",
                 Parent = Card
             })
-            local TLbl = Create("TextLabel", {
+            local TLbl = BindFont(Create("TextLabel", {
                 Size = UDim2.new(0.48, 0, 1, 0),
-                Position = UDim2.new(0, 14, 0, 0),
+                Position = UDim2.new(0, 13, 0, 0),
                 BackgroundTransparency = 1,
                 Text = dTitle,
-                Font = Enum.Font.GothamBold,
-                TextSize = 13,
+                TextSize = 12,
                 TextColor3 = Window._theme.Text,
                 TextXAlignment = Enum.TextXAlignment.Left,
                 Parent = HeaderBtn
-            })
-            local SelectedLbl = Create("TextLabel", {
-                Size = UDim2.new(0.45, -36, 1, 0),
+            }), "Bold")
+            local SelectedLbl = BindFont(Create("TextLabel", {
+                Size = UDim2.new(0.45, -34, 1, 0),
                 Position = UDim2.new(0.52, 0, 0, 0),
                 BackgroundTransparency = 1,
                 Text = "",
-                Font = Enum.Font.GothamMedium,
-                TextSize = 12,
+                TextSize = 11,
                 TextColor3 = Window._theme.Accent,
                 TextXAlignment = Enum.TextXAlignment.Right,
                 TextTruncate = Enum.TextTruncate.AtEnd,
                 Parent = HeaderBtn
-            })
+            }), "Medium")
             local Chevron = Create("ImageLabel", {
-                Size = UDim2.new(0, 16, 0, 16),
-                Position = UDim2.new(1, -28, 0.5, -8),
+                Size = UDim2.new(0, 15, 0, 15),
+                Position = UDim2.new(1, -26, 0.5, -7.5),
                 BackgroundTransparency = 1,
                 ImageColor3 = Window._theme.SubText,
                 Parent = HeaderBtn
             })
             ApplyWindIcon(Chevron, "chevron-down")
-            local FilterBox = Create("TextBox", {
-                Size = UDim2.new(1, -24, 0, 28),
-                Position = UDim2.new(0, 12, 0, 48),
+            local FilterBox = BindFont(Create("TextBox", {
+                Size = UDim2.new(1, -22, 0, 26),
+                Position = UDim2.new(0, 11, 0, 45),
                 BackgroundColor3 = Window._theme.InputBg,
                 PlaceholderText = "🔍 Filter options...",
                 PlaceholderColor3 = Window._theme.SubText,
                 Text = "",
-                Font = Enum.Font.Gotham,
-                TextSize = 11,
+                TextSize = 10,
                 TextColor3 = Window._theme.Text,
                 ClearTextOnFocus = false,
                 Parent = Card
             }, {
-                Create("UICorner", {CornerRadius = UDim.new(0, 7)})
-            })
+                Create("UICorner", {CornerRadius = UDim.new(0, 6)})
+            }), "Regular")
             local ListScroll = Create("ScrollingFrame", {
-                Size = UDim2.new(1, -24, 0, 125),
-                Position = UDim2.new(0, 12, 0, 82),
+                Size = UDim2.new(1, -22, 0, 118),
+                Position = UDim2.new(0, 11, 0, 76),
                 BackgroundTransparency = 1,
                 BorderSizePixel = 0,
                 ScrollBarThickness = 2,
@@ -1529,20 +1696,19 @@ function GlassLib:CreateWindow(cfg)
                     local optStr = tostring(opt)
                     if q == "" or string.find(string.lower(optStr), q, 1, true) then
                         local isChosen = isMulti and (selected[optStr] == true) or (selected == optStr)
-                        local OptBtn = Create("TextButton", {
-                            Size = UDim2.new(1, -4, 0, 28),
+                        local OptBtn = BindFont(Create("TextButton", {
+                            Size = UDim2.new(1, -4, 0, 26),
                             BackgroundColor3 = isChosen and Window._theme.Accent or Window._theme.InputBg,
                             BackgroundTransparency = isChosen and 0.78 or 0.25,
                             Text = "   " .. optStr,
-                            Font = isChosen and Enum.Font.GothamBold or Enum.Font.Gotham,
-                            TextSize = 12,
+                            TextSize = 11,
                             TextColor3 = isChosen and Window._theme.Accent or Window._theme.Text,
                             TextXAlignment = Enum.TextXAlignment.Left,
                             AutoButtonColor = false,
                             Parent = ListScroll
                         }, {
                             Create("UICorner", {CornerRadius = UDim.new(0, 6)})
-                        })
+                        }), isChosen and "Bold" or "Regular")
                         OptBtn.MouseButton1Click:Connect(function()
                             if isMulti then
                                 selected[optStr] = not selected[optStr]
@@ -1569,7 +1735,7 @@ function GlassLib:CreateWindow(cfg)
             HeaderBtn.MouseButton1Click:Connect(function()
                 isOpen = not isOpen
                 Tween(Chevron, 0.22, nil, nil, {Rotation = isOpen and 180 or 0})
-                local targetH = isOpen and math.min(216, 92 + #options * 32) or 44
+                local targetH = isOpen and math.min(204, 84 + #options * 30) or 42
                 Tween(Card, 0.26, Enum.EasingStyle.Quart, Enum.EasingDirection.Out, {
                     Size = UDim2.new(1, 0, 0, targetH)
                 })
@@ -1608,13 +1774,13 @@ function GlassLib:CreateWindow(cfg)
             local callback = kCfg.Callback or function() end
             local listening = false
             local Card = Create("Frame", {
-                Size = UDim2.new(1, 0, 0, 42),
+                Size = UDim2.new(1, 0, 0, 40),
                 BackgroundColor3 = Window._theme.CardBg,
                 BackgroundTransparency = Window._theme.CardTrans,
                 LayoutOrder = self._order,
                 Parent = Page
             }, {
-                Create("UICorner", {CornerRadius = UDim.new(0, 10)})
+                Create("UICorner", {CornerRadius = UDim.new(0, 9)})
             })
             Card:SetAttribute("SearchKey", kTitle)
             local Stroke = Create("UIStroke", {
@@ -1623,31 +1789,29 @@ function GlassLib:CreateWindow(cfg)
                 Transparency = Window._theme.StrokeTrans,
                 Parent = Card
             })
-            local TLbl = Create("TextLabel", {
-                Size = UDim2.new(1, -110, 1, 0),
-                Position = UDim2.new(0, 14, 0, 0),
+            local TLbl = BindFont(Create("TextLabel", {
+                Size = UDim2.new(1, -105, 1, 0),
+                Position = UDim2.new(0, 13, 0, 0),
                 BackgroundTransparency = 1,
                 Text = kTitle,
-                Font = Enum.Font.GothamBold,
-                TextSize = 13,
+                TextSize = 12,
                 TextColor3 = Window._theme.Text,
                 TextXAlignment = Enum.TextXAlignment.Left,
                 Parent = Card
-            })
-            local KeyBtn = Create("TextButton", {
+            }), "Bold")
+            local KeyBtn = BindFont(Create("TextButton", {
                 AnchorPoint = Vector2.new(1, 0.5),
-                Position = UDim2.new(1, -14, 0.5, 0),
-                Size = UDim2.new(0, 82, 0, 26),
+                Position = UDim2.new(1, -13, 0.5, 0),
+                Size = UDim2.new(0, 78, 0, 24),
                 BackgroundColor3 = Window._theme.InputBg,
                 Text = "[" .. tostring(currentKey.Name) .. "]",
-                Font = Enum.Font.Code,
-                TextSize = 12,
+                TextSize = 11,
                 TextColor3 = Window._theme.Accent,
                 AutoButtonColor = false,
                 Parent = Card
             }, {
                 Create("UICorner", {CornerRadius = UDim.new(0, 6)})
-            })
+            }), "Mono")
             local kbEntry = {
                 Key = currentKey,
                 Trigger = function()
@@ -1657,7 +1821,7 @@ function GlassLib:CreateWindow(cfg)
             table.insert(Window._keybinds, kbEntry)
             KeyBtn.MouseButton1Click:Connect(function()
                 listening = true
-                KeyBtn.Text = "[Press Key...]"
+                KeyBtn.Text = "[Press...]"
             end)
             UserInputService.InputBegan:Connect(function(inp)
                 if listening and inp.UserInputType == Enum.UserInputType.Keyboard then
@@ -1687,14 +1851,14 @@ function GlassLib:CreateWindow(cfg)
             local h, s, v = curColor:ToHSV()
             local expanded = false
             local Card = Create("Frame", {
-                Size = UDim2.new(1, 0, 0, 42),
+                Size = UDim2.new(1, 0, 0, 40),
                 BackgroundColor3 = Window._theme.CardBg,
                 BackgroundTransparency = Window._theme.CardTrans,
                 ClipsDescendants = true,
                 LayoutOrder = self._order,
                 Parent = Page
             }, {
-                Create("UICorner", {CornerRadius = UDim.new(0, 10)})
+                Create("UICorner", {CornerRadius = UDim.new(0, 9)})
             })
             Card:SetAttribute("SearchKey", cTitle)
             local Stroke = Create("UIStroke", {
@@ -1703,21 +1867,20 @@ function GlassLib:CreateWindow(cfg)
                 Transparency = Window._theme.StrokeTrans,
                 Parent = Card
             })
-            local TLbl = Create("TextLabel", {
-                Size = UDim2.new(1, -90, 0, 42),
-                Position = UDim2.new(0, 14, 0, 0),
+            local TLbl = BindFont(Create("TextLabel", {
+                Size = UDim2.new(1, -85, 0, 40),
+                Position = UDim2.new(0, 13, 0, 0),
                 BackgroundTransparency = 1,
                 Text = cTitle,
-                Font = Enum.Font.GothamBold,
-                TextSize = 13,
+                TextSize = 12,
                 TextColor3 = Window._theme.Text,
                 TextXAlignment = Enum.TextXAlignment.Left,
                 Parent = Card
-            })
+            }), "Bold")
             local SwatchBtn = Create("TextButton", {
                 AnchorPoint = Vector2.new(1, 0),
-                Position = UDim2.new(1, -14, 0, 9),
-                Size = UDim2.new(0, 48, 0, 24),
+                Position = UDim2.new(1, -13, 0, 8),
+                Size = UDim2.new(0, 44, 0, 24),
                 BackgroundColor3 = curColor,
                 Text = "",
                 AutoButtonColor = false,
@@ -1727,8 +1890,8 @@ function GlassLib:CreateWindow(cfg)
                 Create("UIStroke", {Color = Color3.fromRGB(255, 255, 255), Thickness = 1, Transparency = 0.4})
             })
             local HueBar = Create("TextButton", {
-                Size = UDim2.new(1, -28, 0, 14),
-                Position = UDim2.new(0, 14, 0, 52),
+                Size = UDim2.new(1, -26, 0, 13),
+                Position = UDim2.new(0, 13, 0, 48),
                 BackgroundColor3 = Color3.fromRGB(255, 255, 255),
                 Text = "",
                 AutoButtonColor = false,
@@ -1748,8 +1911,8 @@ function GlassLib:CreateWindow(cfg)
                 })
             })
             local SatBar = Create("TextButton", {
-                Size = UDim2.new(1, -28, 0, 14),
-                Position = UDim2.new(0, 14, 0, 74),
+                Size = UDim2.new(1, -26, 0, 13),
+                Position = UDim2.new(0, 13, 0, 68),
                 BackgroundColor3 = Color3.fromRGB(255, 255, 255),
                 Text = "",
                 AutoButtonColor = false,
@@ -1768,7 +1931,7 @@ function GlassLib:CreateWindow(cfg)
             SwatchBtn.MouseButton1Click:Connect(function()
                 expanded = not expanded
                 Tween(Card, 0.24, Enum.EasingStyle.Quart, Enum.EasingDirection.Out, {
-                    Size = UDim2.new(1, 0, 0, expanded and 100 or 42)
+                    Size = UDim2.new(1, 0, 0, expanded and 92 or 40)
                 })
             end)
             HueBar.MouseButton1Down:Connect(function(x)
@@ -1795,13 +1958,13 @@ function GlassLib:CreateWindow(cfg)
             local defaultText = tostring(tbCfg.Default or "")
             local callback = tbCfg.Callback or function() end
             local Card = Create("Frame", {
-                Size = UDim2.new(1, 0, 0, 44),
+                Size = UDim2.new(1, 0, 0, 42),
                 BackgroundColor3 = Window._theme.CardBg,
                 BackgroundTransparency = Window._theme.CardTrans,
                 LayoutOrder = self._order,
                 Parent = Page
             }, {
-                Create("UICorner", {CornerRadius = UDim.new(0, 10)})
+                Create("UICorner", {CornerRadius = UDim.new(0, 9)})
             })
             Card:SetAttribute("SearchKey", tTitle)
             local Stroke = Create("UIStroke", {
@@ -1810,32 +1973,30 @@ function GlassLib:CreateWindow(cfg)
                 Transparency = Window._theme.StrokeTrans,
                 Parent = Card
             })
-            local TLbl = Create("TextLabel", {
+            local TLbl = BindFont(Create("TextLabel", {
                 Size = UDim2.new(0.5, 0, 1, 0),
-                Position = UDim2.new(0, 14, 0, 0),
+                Position = UDim2.new(0, 13, 0, 0),
                 BackgroundTransparency = 1,
                 Text = tTitle,
-                Font = Enum.Font.GothamBold,
-                TextSize = 13,
+                TextSize = 12,
                 TextColor3 = Window._theme.Text,
                 TextXAlignment = Enum.TextXAlignment.Left,
                 Parent = Card
-            })
-            local Box = Create("TextBox", {
-                Size = UDim2.new(0.45, -16, 0, 28),
-                Position = UDim2.new(0.55, 0, 0.5, -14),
+            }), "Bold")
+            local Box = BindFont(Create("TextBox", {
+                Size = UDim2.new(0.45, -15, 0, 26),
+                Position = UDim2.new(0.55, 0, 0.5, -13),
                 BackgroundColor3 = Window._theme.InputBg,
                 PlaceholderText = placeholder,
                 PlaceholderColor3 = Window._theme.SubText,
                 Text = defaultText,
-                Font = Enum.Font.Gotham,
-                TextSize = 12,
+                TextSize = 11,
                 TextColor3 = Window._theme.Text,
                 ClearTextOnFocus = false,
                 Parent = Card
             }, {
-                Create("UICorner", {CornerRadius = UDim.new(0, 7)})
-            })
+                Create("UICorner", {CornerRadius = UDim.new(0, 6)})
+            }), "Regular")
             Box.FocusLost:Connect(function()
                 task.spawn(callback, Box.Text)
             end)
@@ -1854,7 +2015,7 @@ function GlassLib:CreateWindow(cfg)
             conCfg = conCfg or {}
             self._order += 1
             local cTitle = tostring(conCfg.Title or "Live Activity Console")
-            local height = tonumber(conCfg.Height) or 140
+            local height = tonumber(conCfg.Height) or 130
             local Card = Create("Frame", {
                 Size = UDim2.new(1, 0, 0, height),
                 BackgroundColor3 = Window._theme.InputBg,
@@ -1862,7 +2023,7 @@ function GlassLib:CreateWindow(cfg)
                 LayoutOrder = self._order,
                 Parent = Page
             }, {
-                Create("UICorner", {CornerRadius = UDim.new(0, 10)})
+                Create("UICorner", {CornerRadius = UDim.new(0, 9)})
             })
             Card:SetAttribute("SearchKey", cTitle .. " Console Logs")
             local Stroke = Create("UIStroke", {
@@ -1871,20 +2032,19 @@ function GlassLib:CreateWindow(cfg)
                 Transparency = Window._theme.StrokeTrans,
                 Parent = Card
             })
-            local Header = Create("TextLabel", {
-                Size = UDim2.new(1, -20, 0, 24),
-                Position = UDim2.new(0, 12, 0, 4),
+            local Header = BindFont(Create("TextLabel", {
+                Size = UDim2.new(1, -20, 0, 22),
+                Position = UDim2.new(0, 11, 0, 4),
                 BackgroundTransparency = 1,
                 Text = "▸ " .. cTitle,
-                Font = Enum.Font.Code,
-                TextSize = 12,
+                TextSize = 11,
                 TextColor3 = Window._theme.Accent,
                 TextXAlignment = Enum.TextXAlignment.Left,
                 Parent = Card
-            })
+            }), "Mono")
             local LogScroll = Create("ScrollingFrame", {
-                Size = UDim2.new(1, -20, 1, -34),
-                Position = UDim2.new(0, 10, 0, 28),
+                Size = UDim2.new(1, -20, 1, -32),
+                Position = UDim2.new(0, 10, 0, 26),
                 BackgroundTransparency = 1,
                 BorderSizePixel = 0,
                 ScrollBarThickness = 2,
@@ -1900,16 +2060,15 @@ function GlassLib:CreateWindow(cfg)
                 if level == "SUCCESS" then color = Color3.fromRGB(74, 222, 128)
                 elseif level == "WARN" then color = Color3.fromRGB(250, 204, 21)
                 elseif level == "ERROR" then color = Color3.fromRGB(248, 113, 113) end
-                Create("TextLabel", {
-                    Size = UDim2.new(1, 0, 0, 16),
+                BindFont(Create("TextLabel", {
+                    Size = UDim2.new(1, 0, 0, 15),
                     BackgroundTransparency = 1,
                     Text = string.format("[%s] %s", os.date("%H:%M:%S"), tostring(msg)),
-                    Font = Enum.Font.Code,
-                    TextSize = 11,
+                    TextSize = 10,
                     TextColor3 = color,
                     TextXAlignment = Enum.TextXAlignment.Left,
                     Parent = LogScroll
-                })
+                }), "Mono")
             end
             function ConsoleCtrl:Clear()
                 for _, c in ipairs(LogScroll:GetChildren()) do
@@ -1939,14 +2098,14 @@ function GlassLib:CreateWindow(cfg)
         local placeId = infoCfg.PlaceId or game.PlaceId
         local gameTitle = infoCfg.GameName or "Loading Game Name..."
         local HeroCard = Create("Frame", {
-            Size = UDim2.new(1, 0, 0, 148),
+            Size = UDim2.new(1, 0, 0, 136),
             BackgroundColor3 = self._theme.CardBg,
             BackgroundTransparency = self._theme.CardTrans,
             ClipsDescendants = true,
             LayoutOrder = 1,
             Parent = Tab._page
         }, {
-            Create("UICorner", {CornerRadius = UDim.new(0, 12)})
+            Create("UICorner", {CornerRadius = UDim.new(0, 11)})
         })
         HeroCard:SetAttribute("SearchKey", "Game Info Thumbnail Banner Server")
         local HeroStroke = Create("UIStroke", {
@@ -1963,7 +2122,7 @@ function GlassLib:CreateWindow(cfg)
             ImageTransparency = 0.25,
             Parent = HeroCard
         }, {
-            Create("UICorner", {CornerRadius = UDim.new(0, 12)}),
+            Create("UICorner", {CornerRadius = UDim.new(0, 11)}),
             Create("UIGradient", {
                 Rotation = 90,
                 Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(10, 12, 18)),
@@ -1975,38 +2134,36 @@ function GlassLib:CreateWindow(cfg)
             })
         })
         Create("ImageLabel", {
-            Size = UDim2.new(0, 56, 0, 56),
-            Position = UDim2.new(0, 16, 1, -70),
+            Size = UDim2.new(0, 52, 0, 52),
+            Position = UDim2.new(0, 14, 1, -64),
             BackgroundColor3 = self._theme.InputBg,
             Image = string.format("rbxthumb://type=GameIcon&id=%d&w=150&h=150", placeId),
             Parent = HeroCard
         }, {
-            Create("UICorner", {CornerRadius = UDim.new(0, 10)}),
+            Create("UICorner", {CornerRadius = UDim.new(0, 9)}),
             Create("UIStroke", {Color = self._theme.Accent, Thickness = 1.5})
         })
-        local GameNameLbl = Create("TextLabel", {
-            Size = UDim2.new(1, -210, 0, 22),
-            Position = UDim2.new(0, 84, 1, -66),
+        local GameNameLbl = BindFont(Create("TextLabel", {
+            Size = UDim2.new(1, -190, 0, 20),
+            Position = UDim2.new(0, 78, 1, -60),
             BackgroundTransparency = 1,
             Text = gameTitle,
-            Font = Enum.Font.GothamBold,
-            TextSize = 16,
+            TextSize = 15,
             TextColor3 = Color3.fromRGB(255, 255, 255),
             TextXAlignment = Enum.TextXAlignment.Left,
             TextTruncate = Enum.TextTruncate.AtEnd,
             Parent = HeroCard
-        })
-        Create("TextLabel", {
-            Size = UDim2.new(1, -210, 0, 16),
-            Position = UDim2.new(0, 84, 1, -42),
+        }), "Bold")
+        BindFont(Create("TextLabel", {
+            Size = UDim2.new(1, -190, 0, 15),
+            Position = UDim2.new(0, 78, 1, -38),
             BackgroundTransparency = 1,
             Text = string.format("Place ID: %d  •  Player: @%s", placeId, LocalPlayer.Name),
-            Font = Enum.Font.GothamMedium,
-            TextSize = 11,
+            TextSize = 10,
             TextColor3 = Color3.fromRGB(210, 220, 240),
             TextXAlignment = Enum.TextXAlignment.Left,
             Parent = HeroCard
-        })
+        }), "Medium")
         if not infoCfg.GameName then
             task.spawn(function()
                 local ok, info = pcall(function()
@@ -2025,8 +2182,8 @@ function GlassLib:CreateWindow(cfg)
             Parent = Tab._page
         }, {
             Create("UIGridLayout", {
-                CellSize = UDim2.new(0.5, -5, 0, 74),
-                CellPadding = UDim2.new(0, 10, 0, 10),
+                CellSize = UDim2.new(0.5, -5, 0, 68),
+                CellPadding = UDim2.new(0, 8, 0, 8),
                 SortOrder = Enum.SortOrder.LayoutOrder
             })
         })
@@ -2043,7 +2200,7 @@ function GlassLib:CreateWindow(cfg)
                 BackgroundTransparency = Window._theme.CardTrans,
                 Parent = GridContainer
             }, {
-                Create("UICorner", {CornerRadius = UDim.new(0, 10)})
+                Create("UICorner", {CornerRadius = UDim.new(0, 9)})
             })
             local SStroke = Create("UIStroke", {
                 Color = Window._theme.Stroke,
@@ -2052,56 +2209,53 @@ function GlassLib:CreateWindow(cfg)
                 Parent = SCard
             })
             local IconBadge = Create("Frame", {
-                Size = UDim2.new(0, 36, 0, 36),
-                Position = UDim2.new(0, 12, 0.5, -18),
+                Size = UDim2.new(0, 34, 0, 34),
+                Position = UDim2.new(0, 11, 0.5, -17),
                 BackgroundColor3 = Window._theme.InputBg,
                 BackgroundTransparency = 0.2,
                 Parent = SCard
             }, {
-                Create("UICorner", {CornerRadius = UDim.new(0, 9)})
+                Create("UICorner", {CornerRadius = UDim.new(0, 8)})
             })
             local SIcon = Create("ImageLabel", {
-                Size = UDim2.new(0, 18, 0, 18),
-                Position = UDim2.new(0.5, -9, 0.5, -9),
+                Size = UDim2.new(0, 17, 0, 17),
+                Position = UDim2.new(0.5, -8.5, 0.5, -8.5),
                 BackgroundTransparency = 1,
                 ImageColor3 = Window._theme.Accent,
                 Parent = IconBadge
             })
             ApplyWindIcon(SIcon, cIcon)
-            local STLab = Create("TextLabel", {
-                Size = UDim2.new(1, -62, 0, 15),
-                Position = UDim2.new(0, 58, 0, 11),
+            local STLab = BindFont(Create("TextLabel", {
+                Size = UDim2.new(1, -56, 0, 14),
+                Position = UDim2.new(0, 52, 0, 9),
                 BackgroundTransparency = 1,
                 Text = cTitle,
-                Font = Enum.Font.GothamMedium,
-                TextSize = 11,
+                TextSize = 10,
                 TextColor3 = Window._theme.SubText,
                 TextXAlignment = Enum.TextXAlignment.Left,
                 Parent = SCard
-            })
-            local SVLab = Create("TextLabel", {
-                Size = UDim2.new(1, -62, 0, 22),
-                Position = UDim2.new(0, 58, 0, 26),
+            }), "Medium")
+            local SVLab = BindFont(Create("TextLabel", {
+                Size = UDim2.new(1, -56, 0, 20),
+                Position = UDim2.new(0, 52, 0, 24),
                 BackgroundTransparency = 1,
                 Text = cVal,
-                Font = Enum.Font.GothamBold,
-                TextSize = 16,
+                TextSize = 14,
                 TextColor3 = Window._theme.Text,
                 TextXAlignment = Enum.TextXAlignment.Left,
                 TextTruncate = Enum.TextTruncate.AtEnd,
                 Parent = SCard
-            })
-            local SSLab = Create("TextLabel", {
-                Size = UDim2.new(1, -62, 0, 13),
-                Position = UDim2.new(0, 58, 0, 49),
+            }), "Bold")
+            local SSLab = BindFont(Create("TextLabel", {
+                Size = UDim2.new(1, -56, 0, 12),
+                Position = UDim2.new(0, 52, 0, 46),
                 BackgroundTransparency = 1,
                 Text = cSub,
-                Font = Enum.Font.Gotham,
-                TextSize = 10,
+                TextSize = 9,
                 TextColor3 = Window._theme.Accent,
                 TextXAlignment = Enum.TextXAlignment.Left,
                 Parent = SCard
-            })
+            }), "Regular")
             Window:OnThemeChange(function(th)
                 SCard.BackgroundColor3 = th.CardBg
                 SCard.BackgroundTransparency = th.CardTrans
